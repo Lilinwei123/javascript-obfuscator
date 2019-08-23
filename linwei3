@@ -1,0 +1,128 @@
+var pathReg = /^(http:|https:|)\/\//;
+var normalReg = /^javascript|^about/;
+var blackTag = ["iframe"];
+var blankSrc = [];
+var isClick = 0;
+
+// 判断是否是普通链接
+function isInWhiteList(path) {
+  return pathReg.test(path);
+}
+
+function getScriptSrc() {
+  var scriptTags = document.body.getElementsByTagName("script");
+  var srcList = [];
+
+  for (var i = 0; scriptTags.length && i < scriptTags.length; i++) {
+    scriptTags[i].src && srcList.push(scriptTags[i].src);
+  }
+
+  return srcList.join(",");
+}
+
+function reportInfo(src) {
+  if (src === '') {
+    return;
+  }
+  var msg = {
+    ua: navigator.userAgent || "",
+    hijackedurl: src || "",
+    iframeurl: document.URL || "",
+    pageurl: document.referrer || "",
+    scripts: getScriptSrc() || ""
+  };
+
+  var url = new URL("https://logger.sina.cn/hijacked");
+
+  Object.keys(msg).forEach(key => url.searchParams.append(key, msg[key]));
+
+  fetch(url)
+    .then(res => {
+      console.log("success");
+    })
+    .catch(err => {
+      console.log("err");
+    });
+}
+
+// 判断标签是否是需要拦截的标签
+function checkTag (tagname) {
+  return blackTag.some(tag => tag === tagname);
+}
+
+// 检测src是否正常
+function checkSrc (tagname, src) {
+  if (checkTag (tagname) && !isInWhiteList(src) && !isClick) {
+    if (normalReg.test(src)) {
+      // reportInfo(src);
+      return true;
+    } else {
+      // reportInfo(src);
+      return false;
+    }
+  }
+}
+
+// 判断手机UA,需要屏蔽的返回true，不需要屏蔽的返回false
+function checkUA () {
+  // 根据UA判断手机机型
+  // var UA = window.navigator.userAgent.toLocaleLowerCase();
+
+  // 华为
+  // if(/huawei|honor/.test(UA)) {
+  //   return true;
+  // } else if (/vivo/.test(UA)) {
+  //   return true;
+  // } else {
+  //   return false;
+  // }
+  return true;
+}
+
+document.addEventListener('click', function () {
+  isClick = 1;
+})
+
+// appendChild方法插入
+// var appendChildOnce = document.body.appendChild;
+// document.body.appendChild = function(dom) {
+//   if (dom.src !== '' && !checkSrc(dom.tagName.toLowerCase(), dom.src)) {
+//     reportInfo(dom.src);
+//     return;
+//   } 
+//   var iframeAppend = appendChildOnce.bind(document.body)(dom);
+//   return iframeAppend;
+// };
+
+// 拦截iframe的.src行为
+var originalSetter = Object.getOwnPropertyDescriptor(
+  HTMLIFrameElement.prototype,
+  "src"
+).set;
+
+Object.defineProperty(HTMLIFrameElement.prototype, "src", {
+  set(val) {
+    if (val !== '' && !isInWhiteList(val) && !normalReg.test(val)) {
+      reportInfo(val);
+      return;
+    }
+
+    originalSetter.call(this, val);
+  }
+});
+
+// 拦截setAttribute行为
+var setAttributeOnce = HTMLIFrameElement.prototype.setAttribute;
+HTMLIFrameElement.prototype.setAttribute = function (key, value) {
+  if (value !== '' && !checkSrc(this.tagName.toLowerCase(), value)) {
+    reportInfo(value);
+    return;
+  } 
+
+  return setAttributeOnce.bind(this, key, value)();
+}
+
+if (document.getElementById("observeScheme")) {
+  document.body.removeChild(document.getElementById("observeScheme"));
+}
+
